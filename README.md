@@ -1,5 +1,5 @@
 # MazeSolver
-Project of first year of robotics : implementing a maze solving algorithm on a simulation using CoppeliaSim.
+## Project of first year of robotics : implementing a maze solving algorithm on a simulation using CoppeliaSim.
 
 Initially, we considered implementing a code to map the maze as a matrix, aiming for precise control over the robot's movements. However, we soon realized that this approach wasn't feasible for the type of robot we had at our disposal. Instead of opting for a completely random code, or what I like to call a "vacuum cleaner robot," where the robot simply runs into each wall before changing direction in the hope of eventually reaching the black square, we decided on a different approach. We chose a code that allows us to track each wall detected by a sensor. When the sensor on one side detects a wall, we follow it until the sensor on the opposite side detects another wall, at which point we switch to following that one.
 
