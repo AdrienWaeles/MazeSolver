@@ -2,6 +2,7 @@
 
 #include <assert.h> // library used to manually trigger errors.
 
+
 // Definition of sensors
 #define LIGHT_SENSOR_PIN A0
 #define PROX_SENSOR_L_PIN A4
@@ -50,6 +51,13 @@ bool leaved_left_wall = false;
 // same principle when we switch from right to left wall following mode
 bool leaved_right_wall = false; 
 
+int black_cells_found = 0;
+
+// ------------------------
+// Please adapt this value to the number of black cells you want to find
+int black_cells_tofind = 1;
+// ------------------------
+
 
 // -----------------------------------------------------------------------------------------------------------------------------------------------------------
 // Please adapt these values to fit with your computer specifications which are affecting the simulation speed.
@@ -67,7 +75,7 @@ int white_inferior_limit = 500; // Above this value, considered as white
 int red_inferior_limit = 150; // Above this value and under white inferior limit, considered as red
 
 int red_cell_time_threshold = 300; // minimal red dectection duration to consider it as a red cell
-int black_cell_time_threshold = 200; // minimal black dectection duration to consider it as a black cell
+int black_cell_time_threshold = 300; // minimal black dectection duration to consider it as a black cell
 // -----------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -181,8 +189,14 @@ void switchFollowingWall(){
     }
 }
 
-void leftWall_PID(){
-  error = followingBorder_diagonal_distance_command - analogRead(PROX_SENSOR_DL_PIN); // Then the error (distance from the wall) is calculated using back diagonal left sensor 
+void leftWall_PID(strategyEnum strategy){
+  if (strategy == EXPLORING_CENTER_WALLS){
+    error = exploringCenter_diagonal_distance_command - analogRead(PROX_SENSOR_DL_PIN); // Then the error (distance from the wall) is calculated using back diagonal left sensor 
+  }
+  else{
+    error = followingBorder_diagonal_distance_command - analogRead(PROX_SENSOR_DL_PIN); // Then the error (distance from the wall) is calculated using back diagonal left sensor 
+  }
+  
   corrector = proportional_coefficient * error; // We apply our PID (proportional was enough here)
   // The correction is then added to our speed commands
   leftSpeed = speed_command + corrector; 
@@ -218,26 +232,27 @@ void loop() {
   if (state!=FINISH){ // As long as the robot hasn't solved the maze, the programm is running
 
     if(strategy==FOLLOWING_BORDER){ // Our first strategy is following the left wall to follow the border
-      leftWall_PID();
+      leftWall_PID(FOLLOWING_BORDER);
     }
 
     if(strategy==EXPLORING_CENTER_WALLS){  // Strategy : Exploring the center of the maze by switching followed wall 
       switchFollowingWall(); // We verify if we need to switch followed wall
 
       if(following_left_wall){ // In case following_left_wall is true, we follow the left wall
-        leftWall_PID(); //we apply our left wall PID
+        leftWall_PID(EXPLORING_CENTER_WALLS); //we apply our left wall PID
       }
       else{ // otherwise we follow the right wall
         rightWall_PID();
       }
     }
 
-    while(strategy==RANDOM){ // Random strategy : we simply move forward without correction and turn when a wall is detected
-      move(255, 255);
-      while (analogRead(PROX_SENSOR_FL_PIN)<750){ // If a wall is detected in front of the robot
-        move(-255, 255); // the robot turns on itself
-      }
+    if(strategy==RANDOM){ // Random strategy : we simply move forward without correction and turn when a wall is detected
+      leftSpeed=255;
+      rightSpeed=250;
     }
+
+    constrain_speed(); // We constrain the speeds between -255 and 255
+    move(leftSpeed, rightSpeed); // We move in straight line with our corrected speeds
 
     while(analogRead(PROX_SENSOR_FL_PIN)<750 || digitalRead(PROX_SENSOR_FR_PIN)==1 ){ // While we detect a wall forward, the robot turns on itself
       switch(following_left_wall){ // The rotation direction depends on the wall the robot is following
@@ -250,39 +265,35 @@ void loop() {
       }
     }
 
-    
-    constrain_speed(); // We constrain the speeds between -255 and 255
-    move(leftSpeed, rightSpeed); // We move in straight line with our corrected speeds
-
     light_sensor_value = analogRead(LIGHT_SENSOR_PIN); // We read the value of our light sensor
 
     if (state==SEARCHING_BLACK_CELL){ // If we are searching for black cell then we verify if we have found it
       if (black_duration() > black_cell_time_threshold){ // If we detect a black cell
-        state=SEARCHING_RED_CELL; // now we are searching for the red cell
+        black_cells_found++;
+        Serial.print(black_cells_found);
         Serial.println("BLACK CELL FOUND");
+        if (black_cells_found>=black_cells_tofind){ // If we have found the number of black cells we want
+          state=SEARCHING_RED_CELL; // now we are searching for the red cell
+        }
+        
+      }
+      else if (red_duration() > red_cell_time_threshold && millis()>5000 && strategy!=RANDOM){ // If we have done a complete tour following the external border and we didn't found the black cell
+        strategy=EXPLORING_CENTER_WALLS; // Now we are searching the black cell at the center of the maze
       }
     }
 
-    if (state==SEARCHING_RED_CELL){ // If we are searching for red cell then we verify if we have found it
+    else if (state==SEARCHING_RED_CELL){ // If we are searching for red cell then we verify if we have found it
       if (red_duration() > red_cell_time_threshold){ // if we've found the red cell
       Serial.println("FINISH");
       state=FINISH; // we reached the final state : finish
       move(0,0); // stop the robot
       }
     }
-
     
 
-
-    
-
-    else if (strategy == FOLLOWING_BORDER && red_duration() > red_cell_time_threshold){
-      strategy=EXPLORING_CENTER_WALLS;
-    }
-
-    else if (millis()-300000>=0){ // After 3 minutes if we still haven't solved the maze we go full random.
+    if (300000-millis()<=0){ // After 5 minutes if we still haven't solved the maze we go full random.
       strategy=RANDOM;
     }
-  
+
   }
 }
